@@ -1,4 +1,3 @@
-import fetch from "node-fetch";
 import { URLSearchParams } from "url";
 import { config } from "./config.js";
 
@@ -8,68 +7,54 @@ function assertEnv() {
   }
 }
 
-/**
- * next aligned 2h slots
- */
 function getTargetSlots(now: Date): Date[] {
   const base = new Date(now);
   base.setUTCMinutes(0, 0, 0);
-
   return [
     new Date(base.getTime() + 2 * 60 * 60 * 1000),
     new Date(base.getTime() + 4 * 60 * 60 * 1000),
   ];
 }
 
-/**
- * Get existing team tournaments
- */
 async function getExistingTournaments(): Promise<any[]> {
   const res = await fetch(
     `${config.server}/api/team/${config.team}/arena`,
     {
       headers: {
         Authorization: `Bearer ${process.env.OAUTH_TOKEN}`,
-        Accept: "application/json",
+        Accept: "application/x-ndjson",
       },
     }
   );
-
   if (!res.ok) {
     console.error("Failed to fetch existing tournaments:", await res.text());
     return [];
   }
-
-  const data = await res.json() as any[];
-return data;
+  const text = await res.text();
+  return text
+    .split("\n")
+    .filter(Boolean)
+    .map((line) => JSON.parse(line));
 }
 
-/**
- * Check if tournament already exists at that time
- */
 function existsAtTime(tournaments: any[], target: Date): boolean {
-  const targetTime = target.toISOString();
-
+  const targetMs = target.getTime();
   return tournaments.some((t) => {
     if (!t.startsAt) return false;
-    return new Date(t.startsAt).toISOString() === targetTime;
+    return new Date(t.startsAt).getTime() === targetMs;
   });
 }
 
-async function createArena(startDate: Date) {
+async function createArena(startDate: Date): Promise<string> {
   const body = new URLSearchParams({
     name: config.arena.name(),
     description: config.arena.description(),
-
     clockTime: String(config.arena.clockTime),
     clockIncrement: String(config.arena.clockIncrement),
     minutes: String(config.arena.minutes),
-
     rated: config.arena.rated ? "true" : "false",
     variant: config.arena.variant,
-
-    startDate: startDate.toISOString(),
-
+    startDate: String(startDate.getTime()),
     "conditions.teamMember.teamId": config.team,
   });
 
@@ -84,22 +69,18 @@ async function createArena(startDate: Date) {
   });
 
   const text = await res.text();
-
   if (!res.ok) {
     throw new Error(`Create failed: ${res.status} ${text}`);
   }
 
   const data = JSON.parse(text);
-
   const url = `${config.server}/tournament/${data.id}`;
   console.log("✅ Created:", url);
-
   return url;
 }
 
 async function main() {
   assertEnv();
-
   console.log("=== SAFE 2H FUTURE TOURNAMENT SYSTEM ===");
 
   const now = new Date();
@@ -109,7 +90,6 @@ async function main() {
   slots.forEach((s) => console.log(" -", s.toISOString()));
 
   const existing = await getExistingTournaments();
-
   const created: string[] = [];
 
   for (const slot of slots) {
@@ -117,7 +97,6 @@ async function main() {
       console.log("⏭ Already exists:", slot.toISOString());
       continue;
     }
-
     const url = await createArena(slot);
     created.push(url);
   }
