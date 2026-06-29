@@ -40,7 +40,8 @@ async function getExistingTournaments(): Promise<any[]> {
     return [];
   }
 
-  return await res.json();
+  const data = await res.json() as any[];
+return data;
 }
 
 /**
